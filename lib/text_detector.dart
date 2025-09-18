@@ -14,12 +14,18 @@ class TextDetector {
   /// [imagePath] - Path to the image file
   /// [recognitionLevel] - Recognition accuracy level: 'fast' or 'accurate' (default: 'accurate')
   /// [languages] - List of language codes to recognize (optional, uses automatic detection if not specified)
+  /// [enhanceForBrightness] - Enable preprocessing for bright/reflective images (default: true)
+  /// [preprocessingLevel] - Level of preprocessing: 'auto', 'none', 'light', 'moderate', 'aggressive' (default: 'auto')
+  /// [multiPass] - Enable multi-pass detection with different preprocessing (default: true)
   ///
   /// Returns a list of [TextBlock] objects containing detected text and their positions
   Future<List<TextBlock>> detectText({
     required String imagePath,
     RecognitionLevel recognitionLevel = RecognitionLevel.accurate,
     List<String>? languages,
+    bool enhanceForBrightness = true,
+    String preprocessingLevel = 'auto',
+    bool multiPass = true,
   }) async {
     if (!File(imagePath).existsSync()) {
       throw ArgumentError('Image file does not exist at path: $imagePath');
@@ -29,6 +35,9 @@ class TextDetector {
       imagePath: imagePath,
       recognitionLevel: recognitionLevel.name,
       languages: languages,
+      enhanceForBrightness: enhanceForBrightness,
+      preprocessingLevel: preprocessingLevel,
+      multiPass: multiPass,
     );
 
     return results.map((data) => TextBlock.fromMap(data)).toList();

@@ -14,12 +14,18 @@ class MethodChannelTextDetector extends TextDetectorPlatform {
     required String imagePath,
     required String recognitionLevel,
     List<String>? languages,
+    bool enhanceForBrightness = true,
+    String preprocessingLevel = 'auto',
+    bool multiPass = true,
   }) async {
     try {
       final result = await methodChannel.invokeMethod<List>('detectText', {
         'imagePath': imagePath,
         'recognitionLevel': recognitionLevel,
         'languages': languages,
+        'enhanceForBrightness': enhanceForBrightness,
+        'preprocessingLevel': preprocessingLevel,
+        'multiPass': multiPass,
       });
 
       if (result == null) {

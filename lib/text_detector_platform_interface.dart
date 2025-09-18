@@ -28,6 +28,9 @@ abstract class TextDetectorPlatform extends PlatformInterface {
     required String imagePath,
     required String recognitionLevel,
     List<String>? languages,
+    bool enhanceForBrightness = true,
+    String preprocessingLevel = 'auto',
+    bool multiPass = true,
   }) {
     throw UnimplementedError('detectText() has not been implemented.');
   }
