@@ -50,70 +50,76 @@ public class TextDetectorPlugin: NSObject, FlutterPlugin {
                                   preprocessingLevel: String,
                                   multiPass: Bool,
                                   result: @escaping FlutterResult) {
-        guard let image = UIImage(contentsOfFile: imagePath) else {
-            result(FlutterError(code: "IMAGE_LOAD_ERROR",
-                               message: "Failed to load image from path",
-                               details: nil))
-            return
-        }
-
-        // Fix the image orientation to match display
-        let fixedImage = fixImageOrientation(image)
-
-        guard let originalCGImage = fixedImage.cgImage else {
-            result(FlutterError(code: "IMAGE_LOAD_ERROR",
-                               message: "Failed to get CGImage",
-                               details: nil))
-            return
-        }
-
-        // Analyze brightness if auto preprocessing is enabled
-        var shouldPreprocess = enhanceForBrightness
-        var actualPreprocessingLevel = preprocessingLevel
-
-        if preprocessingLevel == "auto" && enhanceForBrightness {
-            let (luminance, isOverexposed) = analyzeImageBrightness(originalCGImage)
-            shouldPreprocess = isOverexposed || luminance > 0.7
-
-            // Determine preprocessing level based on luminance
-            if luminance > 0.85 {
-                actualPreprocessingLevel = "aggressive"
-            } else if luminance > 0.75 {
-                actualPreprocessingLevel = "moderate"
-            } else {
-                actualPreprocessingLevel = "light"
-            }
-        }
-
-        // Prepare images for multi-pass detection
-        var imagesToProcess: [(cgImage: CGImage, passName: String)] = []
-
-        // Pass 1: Original image
-        imagesToProcess.append((originalCGImage, "original"))
-
-        // Pass 2 & 3: Preprocessed images if needed
-        if multiPass && shouldPreprocess {
-            if let moderateImage = preprocessImageForBrightness(originalCGImage, level: actualPreprocessingLevel) {
-                imagesToProcess.append((moderateImage, "enhanced"))
+        // Move all heavy processing to background queue
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let image = UIImage(contentsOfFile: imagePath) else {
+                DispatchQueue.main.async {
+                    result(FlutterError(code: "IMAGE_LOAD_ERROR",
+                                       message: "Failed to load image from path",
+                                       details: nil))
+                }
+                return
             }
 
-            // Add a third pass with different preprocessing for very bright images
-            if actualPreprocessingLevel == "aggressive" {
-                if let aggressiveImage = preprocessImageForBrightness(originalCGImage, level: "aggressive") {
-                    imagesToProcess.append((aggressiveImage, "aggressive"))
+            // Fix the image orientation to match display
+            let fixedImage = self.fixImageOrientation(image)
+
+            guard let originalCGImage = fixedImage.cgImage else {
+                DispatchQueue.main.async {
+                    result(FlutterError(code: "IMAGE_LOAD_ERROR",
+                                       message: "Failed to get CGImage",
+                                       details: nil))
+                }
+                return
+            }
+
+            // Analyze brightness if auto preprocessing is enabled
+            var shouldPreprocess = enhanceForBrightness
+            var actualPreprocessingLevel = preprocessingLevel
+
+            if preprocessingLevel == "auto" && enhanceForBrightness {
+                let (luminance, isOverexposed) = self.analyzeImageBrightness(originalCGImage)
+                shouldPreprocess = isOverexposed || luminance > 0.7
+
+                // Determine preprocessing level based on luminance
+                if luminance > 0.85 {
+                    actualPreprocessingLevel = "aggressive"
+                } else if luminance > 0.75 {
+                    actualPreprocessingLevel = "moderate"
+                } else {
+                    actualPreprocessingLevel = "light"
                 }
             }
-        }
 
-        // Collect results from all passes
-        var allDetectedTexts: [String: [String: Any]] = [:]
-        let dispatchGroup = DispatchGroup()
+            // Prepare images for multi-pass detection
+            var imagesToProcess: [(cgImage: CGImage, passName: String)] = []
 
-        for (cgImage, passName) in imagesToProcess {
-            dispatchGroup.enter()
+            // Pass 1: Original image
+            imagesToProcess.append((originalCGImage, "original"))
 
-            let requestHandler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-            let request = VNRecognizeTextRequest { (request, error) in
+            // Pass 2 & 3: Preprocessed images if needed
+            if multiPass && shouldPreprocess {
+                if let moderateImage = self.preprocessImageForBrightness(originalCGImage, level: actualPreprocessingLevel) {
+                    imagesToProcess.append((moderateImage, "enhanced"))
+                }
+
+                // Add a third pass with different preprocessing for very bright images
+                if actualPreprocessingLevel == "aggressive" {
+                    if let aggressiveImage = self.preprocessImageForBrightness(originalCGImage, level: "aggressive") {
+                        imagesToProcess.append((aggressiveImage, "aggressive"))
+                    }
+                }
+            }
+
+            // Collect results from all passes
+            var allDetectedTexts: [String: [String: Any]] = [:]
+            let dispatchGroup = DispatchGroup()
+
+            for (cgImage, passName) in imagesToProcess {
+                dispatchGroup.enter()
+
+                let requestHandler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+                let request = VNRecognizeTextRequest { (request, error) in
                 defer { dispatchGroup.leave() }
                 if let error = error {
                     print("Text recognition error in pass \(passName): \(error.localizedDescription)")
@@ -205,8 +211,9 @@ public class TextDetectorPlugin: NSObject, FlutterPlugin {
             }
         }
 
-        // Wait for all passes to complete
-        dispatchGroup.notify(queue: .main) {
+            // Wait for all passes to complete (still on background queue)
+            dispatchGroup.wait()
+
             // Convert dictionary to array and sort by position
             let finalResults = Array(allDetectedTexts.values).sorted { first, second in
                 let y1 = first["y"] as? CGFloat ?? 0
@@ -221,7 +228,10 @@ public class TextDetectorPlugin: NSObject, FlutterPlugin {
                 return x1 < x2
             }
 
-            result(finalResults)
+            // Return results on main thread
+            DispatchQueue.main.async {
+                result(finalResults)
+            }
         }
     }
 

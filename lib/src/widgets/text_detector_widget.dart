@@ -68,32 +68,48 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
   final TextDetector _textDetector = TextDetector();
   List<TextBlock>? _detectedTextBlocks;
   bool _isProcessing = false;
-  late File _imageFile;
+  File? _imageFile;
+  bool _isFileReady = false;
 
   @override
   void initState() {
     super.initState();
-    _imageFile = File(widget.imagePath);
+    // Set initial processing state if auto-detecting
     if (widget.autoDetect) {
-      // Start with processing true to show spinner immediately
       _isProcessing = true;
-      // Preload image and detect text after the first frame to avoid blocking UI
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _preloadImageAndDetect();
-      });
+    }
+    // Schedule file initialization after first frame to ensure immediate rendering
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeFile();
+    });
+  }
+
+  void _initializeFile() {
+    // Create file reference (this is just a reference, not actual loading)
+    final file = File(widget.imagePath);
+
+    if (!mounted) return;
+
+    setState(() {
+      _imageFile = file;
+      _isFileReady = true;
+    });
+
+    // Now that file is ready, start detection if needed
+    if (widget.autoDetect) {
+      _preloadImageAndDetect();
     } else {
       // Preload image even when not auto-detecting
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          precacheImage(FileImage(_imageFile), context);
-        }
-      });
+      if (mounted) {
+        precacheImage(FileImage(file), context);
+      }
     }
   }
 
   Future<void> _preloadImageAndDetect() async {
+    if (_imageFile == null) return;
     // Preload image asynchronously (non-blocking)
-    precacheImage(FileImage(_imageFile), context);
+    precacheImage(FileImage(_imageFile!), context);
     // Detect text immediately
     _detectText();
   }
@@ -148,16 +164,47 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
         fit: StackFit.expand,
         children: [
           _buildImageView(),
-          if (_isProcessing) _buildLoadingIndicator(),
+          // Show processing indicator on top of image when detecting text
+          if (_isFileReady && _isProcessing && _detectedTextBlocks == null)
+            Positioned(
+              top: 100,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CupertinoActivityIndicator(radius: 10, color: Colors.white),
+                      SizedBox(width: 8),
+                      Text(
+                        'Detecting text...',
+                        style: TextStyle(color: Colors.white, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
   Widget _buildImageView() {
+    // Show loading if file is not ready yet
+    if (!_isFileReady || _imageFile == null) {
+      return _buildLoadingIndicator();
+    }
+
     if (_detectedTextBlocks != null) {
       return TextOverlayWidget(
-        imageFile: _imageFile,
+        imageFile: _imageFile!,
         textBlocks: _detectedTextBlocks!,
         onTextBlocksSelected: widget.onTextBlocksSelected,
         onTextCopied: widget.onTextCopied,
@@ -170,7 +217,7 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
       maxScale: 4.0,
       child: Center(
         child: Image.file(
-          _imageFile,
+          _imageFile!,
           fit: BoxFit.contain,
           gaplessPlayback: true,
           frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
