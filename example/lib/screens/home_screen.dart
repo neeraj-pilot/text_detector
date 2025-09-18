@@ -26,14 +26,34 @@ class HomeScreen extends StatelessWidget {
             const SizedBox(height: 40),
             _buildVariantCard(
               context,
-              title: 'iOS Style',
-              description: 'Native iOS text selection with overlay detection',
+              title: 'iOS Style - Multi-Pass',
+              description: 'Full detection with parallel processing for challenging images',
               icon: Icons.phone_iphone,
               color: Colors.blue,
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => const IosStyleScreenV2(),
+                  builder: (context) => const IosStyleScreenV2(
+                    singleShotMode: false,
+                    enableParallelDetection: true,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildVariantCard(
+              context,
+              title: 'iOS Style - Single Shot',
+              description: 'Fast single-pass detection with high accuracy',
+              icon: Icons.speed,
+              color: Colors.green,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const IosStyleScreenV2(
+                    singleShotMode: true,
+                    enableParallelDetection: false,
+                  ),
                 ),
               ),
             ),

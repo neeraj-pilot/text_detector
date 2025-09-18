@@ -13,7 +13,17 @@ import '../../widgets/debug_text_blocks_viewer.dart';
 import '../../widgets/ios_text_overlay_draggable.dart';
 
 class IosStyleScreenV2 extends StatefulWidget {
-  const IosStyleScreenV2({super.key});
+  /// Enable single-shot mode for faster, single-pass detection
+  final bool singleShotMode;
+
+  /// Enable parallel multi-pass detection for challenging images
+  final bool enableParallelDetection;
+
+  const IosStyleScreenV2({
+    super.key,
+    this.singleShotMode = false,
+    this.enableParallelDetection = true,
+  });
 
   @override
   State<IosStyleScreenV2> createState() => _IosStyleScreenV2State();
@@ -56,8 +66,7 @@ class _IosStyleScreenV2State extends State<IosStyleScreenV2>
           else
             _buildEmptyState(),
           _buildTopControls(),
-          if (_isProcessing)
-            _buildProcessingOverlay(),
+          // Removed full-screen processing overlay that was blocking the image
           if (kDebugMode && _detectedTextBlocks != null && _detectedTextBlocks!.isNotEmpty)
             _buildDebugButton(),
         ],
@@ -77,8 +86,8 @@ class _IosStyleScreenV2State extends State<IosStyleScreenV2>
                 shape: BoxShape.circle,
                 gradient: LinearGradient(
                   colors: [
-                    CupertinoColors.activeBlue.withOpacity(0.2),
-                    CupertinoColors.activeBlue.withOpacity(0.1),
+                    CupertinoColors.activeBlue.withValues(alpha: 0.2),
+                    CupertinoColors.activeBlue.withValues(alpha: 0.1),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -104,7 +113,7 @@ class _IosStyleScreenV2State extends State<IosStyleScreenV2>
             Text(
               'Extract text from any image',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.6),
+                color: Colors.white.withValues(alpha: 0.6),
                 fontSize: 16,
               ),
             ),
@@ -149,11 +158,11 @@ class _IosStyleScreenV2State extends State<IosStyleScreenV2>
         decoration: BoxDecoration(
           color: isPrimary
               ? CupertinoColors.activeBlue
-              : Colors.white.withOpacity(0.1),
+              : Colors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(16),
           border: isPrimary
               ? null
-              : Border.all(color: Colors.white.withOpacity(0.2)),
+              : Border.all(color: Colors.white.withValues(alpha: 0.2)),
         ),
         child: Column(
           children: [
@@ -166,7 +175,7 @@ class _IosStyleScreenV2State extends State<IosStyleScreenV2>
             Text(
               label,
               style: TextStyle(
-                color: Colors.white.withOpacity(isPrimary ? 1 : 0.9),
+                color: Colors.white.withValues(alpha: isPrimary ? 1 : 0.9),
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
@@ -204,6 +213,18 @@ class _IosStyleScreenV2State extends State<IosStyleScreenV2>
             child: Image.file(
               _imageFile!,
               fit: BoxFit.contain,
+              gaplessPlayback: true,
+              frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                if (wasSynchronouslyLoaded) {
+                  return child;
+                }
+                return AnimatedOpacity(
+                  opacity: frame == null ? 0 : 1,
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOut,
+                  child: child,
+                );
+              },
             ),
           ),
         ),
@@ -216,15 +237,15 @@ class _IosStyleScreenV2State extends State<IosStyleScreenV2>
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.85),
+                  color: Colors.black.withValues(alpha: 0.85),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: CupertinoColors.activeBlue.withOpacity(0.3),
+                    color: CupertinoColors.activeBlue.withValues(alpha: 0.3),
                     width: 1,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: CupertinoColors.activeBlue.withOpacity(0.2),
+                      color: CupertinoColors.activeBlue.withValues(alpha: 0.2),
                       blurRadius: 20,
                       spreadRadius: 2,
                     ),
@@ -256,82 +277,51 @@ class _IosStyleScreenV2State extends State<IosStyleScreenV2>
     );
   }
 
-  Widget _buildProcessingOverlay() {
-    return Container(
-      color: Colors.black.withOpacity(0.7),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        CupertinoColors.activeBlue.withOpacity(0.2),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-                const CupertinoActivityIndicator(
-                  radius: 25,
-                  color: CupertinoColors.activeBlue,
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Analyzing Text...',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Powered by AI',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.6),
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
 
   Future<void> _pickImage() async {
     final XFile? image = await _imagePicker.pickImage(source: ImageSource.gallery);
     if (image != null) {
+      final file = File(image.path);
+
       setState(() {
-        _imageFile = File(image.path);
+        _imageFile = file;
         _detectedTextBlocks = null;
+        _isProcessing = true;  // Show spinner immediately
       });
+
       _fadeController.forward();
-      // Auto-detect after picking
-      Future.delayed(const Duration(milliseconds: 500), _detectText);
+
+      // Preload image asynchronously (non-blocking)
+      precacheImage(FileImage(file), context);
+
+      // Auto-detect after a frame to ensure UI updates
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _detectText();
+      });
     }
   }
 
   Future<void> _takePhoto() async {
     final XFile? image = await _imagePicker.pickImage(source: ImageSource.camera);
     if (image != null) {
+      final file = File(image.path);
+
       setState(() {
-        _imageFile = File(image.path);
+        _imageFile = file;
         _detectedTextBlocks = null;
+        _isProcessing = true;  // Show spinner immediately
       });
+
       _fadeController.forward();
-      // Auto-detect after taking photo
-      Future.delayed(const Duration(milliseconds: 500), _detectText);
+
+      // Preload image asynchronously (non-blocking)
+      precacheImage(FileImage(file), context);
+
+      // Auto-detect after a frame to ensure UI updates
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _detectText();
+      });
     }
   }
 
@@ -346,12 +336,25 @@ class _IosStyleScreenV2State extends State<IosStyleScreenV2>
     try {
       final blocks = await _textDetector.detectText(
         imagePath: _imageFile!.path,
-        recognitionLevel: RecognitionLevel.accurate,
+        recognitionLevel: widget.singleShotMode
+            ? RecognitionLevel.accurate  // Always use accurate for single-shot
+            : RecognitionLevel.accurate,
+        multiPass: widget.singleShotMode
+            ? false  // Single-shot mode: only one pass
+            : widget.enableParallelDetection,  // Use parallel detection setting
+        enhanceForBrightness: widget.singleShotMode
+            ? false  // No preprocessing in single-shot mode
+            : true,  // Enable brightness enhancement for multi-pass
+        preprocessingLevel: widget.singleShotMode
+            ? 'none'  // No preprocessing in single-shot mode
+            : 'auto',  // Auto preprocessing for multi-pass
       );
 
       setState(() {
         _detectedTextBlocks = blocks;
       });
+
+      if (!mounted) return;
 
       if (blocks.isEmpty) {
         CustomToast.show(context, 'No text detected', isError: true);
@@ -360,6 +363,7 @@ class _IosStyleScreenV2State extends State<IosStyleScreenV2>
         // Silent - no need to announce text block count
       }
     } catch (e) {
+      if (!mounted) return;
       CustomToast.show(context, 'Error: $e', isError: true);
     } finally {
       setState(() {
@@ -373,7 +377,7 @@ class _IosStyleScreenV2State extends State<IosStyleScreenV2>
       bottom: MediaQuery.of(context).padding.bottom + 100,
       right: 16,
       child: FloatingActionButton.small(
-        backgroundColor: Colors.orange.withOpacity(0.9),
+        backgroundColor: Colors.orange.withValues(alpha: 0.9),
         onPressed: _showDebugViewer,
         child: const Icon(
           Icons.bug_report,

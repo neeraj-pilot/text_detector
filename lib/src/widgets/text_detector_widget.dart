@@ -32,6 +32,18 @@ class TextDetectorWidget extends StatefulWidget {
   /// Whether to show boundaries for unselected text
   final bool showUnselectedBoundaries;
 
+  /// Single-shot mode: Perform only one detection pass with high accuracy
+  final bool singleShotMode;
+
+  /// Enable parallel multi-pass detection for better results on challenging images
+  final bool enableParallelDetection;
+
+  /// Enable brightness enhancement preprocessing
+  final bool enhanceForBrightness;
+
+  /// Preprocessing level: 'auto', 'none', 'light', 'moderate', 'aggressive'
+  final String preprocessingLevel;
+
   const TextDetectorWidget({
     super.key,
     required this.imagePath,
@@ -42,6 +54,10 @@ class TextDetectorWidget extends StatefulWidget {
     this.loadingWidget,
     this.backgroundColor = Colors.black,
     this.showUnselectedBoundaries = true,
+    this.singleShotMode = false,
+    this.enableParallelDetection = true,
+    this.enhanceForBrightness = true,
+    this.preprocessingLevel = 'auto',
   });
 
   @override
@@ -59,24 +75,53 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
     super.initState();
     _imageFile = File(widget.imagePath);
     if (widget.autoDetect) {
+      // Start with processing true to show spinner immediately
+      _isProcessing = true;
+      // Preload image and detect text after the first frame to avoid blocking UI
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _detectText();
+        _preloadImageAndDetect();
+      });
+    } else {
+      // Preload image even when not auto-detecting
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          precacheImage(FileImage(_imageFile), context);
+        }
       });
     }
   }
 
-  Future<void> _detectText() async {
-    if (_isProcessing) return;
+  Future<void> _preloadImageAndDetect() async {
+    // Preload image asynchronously (non-blocking)
+    precacheImage(FileImage(_imageFile), context);
+    // Detect text immediately
+    _detectText();
+  }
 
-    setState(() {
-      _isProcessing = true;
-      _detectedTextBlocks = null;
-    });
+  Future<void> _detectText() async {
+    // Don't set processing true here if already processing
+    if (!_isProcessing) {
+      setState(() {
+        _isProcessing = true;
+        _detectedTextBlocks = null;
+      });
+    }
 
     try {
       final blocks = await _textDetector.detectText(
         imagePath: widget.imagePath,
-        recognitionLevel: widget.recognitionLevel,
+        recognitionLevel: widget.singleShotMode
+            ? RecognitionLevel.accurate  // Always use accurate for single-shot
+            : widget.recognitionLevel,
+        multiPass: widget.singleShotMode
+            ? false  // Single-shot mode: only one pass
+            : widget.enableParallelDetection,  // Use parallel detection setting
+        enhanceForBrightness: widget.singleShotMode
+            ? false  // No preprocessing in single-shot mode
+            : widget.enhanceForBrightness,
+        preprocessingLevel: widget.singleShotMode
+            ? 'none'  // No preprocessing in single-shot mode
+            : widget.preprocessingLevel,
       );
 
       if (mounted) {
@@ -127,6 +172,18 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
         child: Image.file(
           _imageFile,
           fit: BoxFit.contain,
+          gaplessPlayback: true,
+          frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+            if (wasSynchronouslyLoaded) {
+              return child;
+            }
+            return AnimatedOpacity(
+              opacity: frame == null ? 0 : 1,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              child: child,
+            );
+          },
         ),
       ),
     );
