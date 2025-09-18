@@ -195,7 +195,7 @@ The plugin automatically handles:
 
 ## Platform Support
 
-- ✅ iOS 11.0+ (uses Vision framework)
+- ✅ iOS 13.0+ (uses Vision framework with VNRecognizeTextRequest)
 - 🚧 Android (coming soon with ML Kit)
 
 ## Contributing

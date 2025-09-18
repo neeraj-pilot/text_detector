@@ -177,8 +177,13 @@ public class TextDetectorPlugin: NSObject, FlutterPlugin {
             if let languages = languages, !languages.isEmpty {
                 request.recognitionLanguages = languages
             } else {
-                // Use automatic language detection
-                request.automaticallyDetectsLanguage = true
+                // Use automatic language detection (iOS 16+) or default languages
+                if #available(iOS 16.0, *) {
+                    request.automaticallyDetectsLanguage = true
+                } else {
+                    // Default to common languages for iOS 13-15
+                    request.recognitionLanguages = ["en-US"]
+                }
             }
 
             // Set lower minimum text height for better detection

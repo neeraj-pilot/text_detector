@@ -1,7 +1,7 @@
 name: text_detector
-description: "A new Flutter plugin project."
-version: 0.0.1
-homepage:
+description: "Flutter plugin for text detection using iOS Vision framework with advanced selection UI. Supports iOS 13.0+."
+version: 1.0.0
+homepage: https://github.com/neeraj-pilot/text_detector
 
 environment:
   sdk: ^3.8.1
