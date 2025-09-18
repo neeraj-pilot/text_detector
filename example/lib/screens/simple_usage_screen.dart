@@ -35,7 +35,7 @@ class _SimpleUsageScreenState extends State<SimpleUsageScreen> {
                 );
               },
               onTextBlocksSelected: (blocks) {
-                print('Selected ${blocks.length} text blocks');
+                // Silent callback - ${blocks.length} text blocks selected
               },
             )
           : Center(

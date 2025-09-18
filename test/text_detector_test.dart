@@ -10,6 +10,16 @@ class MockTextDetectorPlatform
 
   @override
   Future<String?> getPlatformVersion() => Future.value('42');
+
+  @override
+  Future<List<Map<String, dynamic>>> detectText({
+    required String imagePath,
+    String recognitionLevel = 'accurate',
+    List<String>? languages,
+    bool enhanceForBrightness = true,
+    String preprocessingLevel = 'auto',
+    bool multiPass = true,
+  }) => Future.value([]);
 }
 
 void main() {

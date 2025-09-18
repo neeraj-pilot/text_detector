@@ -108,13 +108,22 @@ class _IosTextOverlayState extends State<IosTextOverlay>
                 child: Image.file(
                   widget.imageFile,
                   fit: BoxFit.contain,
+                  gaplessPlayback: true,
                   frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
                     if (frame != null && _displaySize == null) {
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         _calculateDisplayMetrics(constraints);
                       });
                     }
-                    return child;
+                    if (wasSynchronouslyLoaded) {
+                      return child;
+                    }
+                    return AnimatedOpacity(
+                      opacity: frame == null ? 0 : 1,
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeOut,
+                      child: child,
+                    );
                   },
                 ),
               ),
